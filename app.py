@@ -83,9 +83,25 @@ def find_agencies(startup: str, icp: str, region: str, max_agencies: int) -> lis
         f'site:linkedin.com/company (agency OR consultancy OR studio) "{icp}" '
         f'"{region}" "{startup}"'
     )
-    results = search_duckduckgo(query=query, max_results=max_agencies * 3)
+    st.caption(f"Agency search query: `{query}`")
+
+    try:
+        results = search_duckduckgo(query=query, max_results=max_agencies * 3)
+    except requests.RequestException as exc:
+        st.error(f"Agency search request failed: {exc}")
+        st.warning("Try again in a moment, reduce query complexity, or verify network access.")
+        return []
+
     companies = [result for result in results if is_linkedin_company(result.url)]
-    return dedupe_by_url(companies)[:max_agencies]
+    deduped_companies = dedupe_by_url(companies)[:max_agencies]
+
+    st.write(
+        "Agency search debug — "
+        f"raw parsed: {len(results)}, "
+        f"LinkedIn-company filtered: {len(companies)}, "
+        f"deduped returned: {len(deduped_companies)}"
+    )
+    return deduped_companies
 
 
 def find_people_for_agency(
@@ -99,9 +115,27 @@ def find_people_for_agency(
         f'(founder OR ceo OR "head of growth" OR "business development") '
         f'"{icp}" "{region}"'
     )
-    results = search_duckduckgo(query=query, max_results=max_people * 3)
+    st.caption(f"People search query for {agency_name}: `{query}`")
+
+    try:
+        results = search_duckduckgo(query=query, max_results=max_people * 3)
+    except requests.RequestException as exc:
+        st.error(f"People search request failed for {agency_name}: {exc}")
+        st.warning(
+            f"No people results returned for {agency_name} due to a request error."
+        )
+        return []
+
     people = [result for result in results if is_linkedin_profile(result.url)]
-    return dedupe_by_url(people)[:max_people]
+    deduped_people = dedupe_by_url(people)[:max_people]
+
+    st.write(
+        f"People search debug for {agency_name} — "
+        f"raw parsed: {len(results)}, "
+        f"LinkedIn-profile filtered: {len(people)}, "
+        f"deduped returned: {len(deduped_people)}"
+    )
+    return deduped_people
 
 
 def results_to_dataframe(results: list[SearchResult], kind: str) -> pd.DataFrame:
