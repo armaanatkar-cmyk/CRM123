@@ -79,12 +79,29 @@ def dedupe_by_url(results: Iterable[SearchResult]) -> list[SearchResult]:
 
 
 def find_agencies(startup: str, icp: str, region: str, max_agencies: int) -> list[SearchResult]:
-    query = (
-        f'site:linkedin.com/company (agency OR consultancy OR studio) "{icp}" '
-        f'"{region}" "{startup}"'
-    )
-    results = search_duckduckgo(query=query, max_results=max_agencies * 3)
-    companies = [result for result in results if is_linkedin_company(result.url)]
+    tier_queries = [
+        (
+            f'site:linkedin.com/company (agency OR consultancy OR studio) "{icp}" '
+            f'"{region}" "{startup}"'
+        ),
+        (
+            f'site:linkedin.com/company (agency OR consultancy OR studio) "{icp}" '
+            f'"{region}"'
+        ),
+        (
+            f'site:linkedin.com/company (agency OR consultancy OR studio) "{icp}" '
+            f'"{startup}"'
+        ),
+        f'site:linkedin.com/company (agency OR consultancy OR studio OR marketing OR growth) "{icp}"',
+    ]
+
+    companies: list[SearchResult] = []
+    for query in tier_queries:
+        results = search_duckduckgo(query=query, max_results=max_agencies * 3)
+        companies.extend(result for result in results if is_linkedin_company(result.url))
+        if companies:
+            break
+
     return dedupe_by_url(companies)[:max_agencies]
 
 
@@ -94,13 +111,25 @@ def find_people_for_agency(
     region: str,
     max_people: int,
 ) -> list[SearchResult]:
-    query = (
-        f'site:linkedin.com/in "{agency_name}" '
-        f'(founder OR ceo OR "head of growth" OR "business development") '
-        f'"{icp}" "{region}"'
+    base_roles = '(founder OR ceo OR "head of growth" OR "business development")'
+    broad_roles = (
+        '(founder OR ceo OR owner OR principal OR partner OR '
+        '"head of growth" OR "growth lead" OR "business development" OR "account director")'
     )
-    results = search_duckduckgo(query=query, max_results=max_people * 3)
-    people = [result for result in results if is_linkedin_profile(result.url)]
+    tier_queries = [
+        f'site:linkedin.com/in "{agency_name}" {base_roles} "{icp}" "{region}"',
+        f'site:linkedin.com/in "{agency_name}" {base_roles} "{icp}"',
+        f'site:linkedin.com/in "{agency_name}" {base_roles} "{region}"',
+        f'site:linkedin.com/in "{agency_name}" {broad_roles} "{icp}"',
+    ]
+
+    people: list[SearchResult] = []
+    for query in tier_queries:
+        results = search_duckduckgo(query=query, max_results=max_people * 3)
+        people.extend(result for result in results if is_linkedin_profile(result.url))
+        if people:
+            break
+
     return dedupe_by_url(people)[:max_people]
 
 
