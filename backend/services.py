@@ -1,9 +1,15 @@
 import re
+import os
+import json
 import html
 from urllib.parse import parse_qs, unquote, urlparse
 from typing import List, Iterable
 from duckduckgo_search import DDGS
+from groq import Groq
 from models import SearchResult, ParsedIntent, SearchResponse
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+_groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 ROLE_KW = [
     "ceo", "cto", "cfo", "coo", "cmo", "vp", "svp", "evp",
@@ -44,11 +50,12 @@ REGION_KW = {
     "Remote": ["remote", "worldwide", "global", "anywhere"],
 }
 
-def parse_user_prompt(prompt: str) -> ParsedIntent:
+def _regex_parse(prompt: str) -> ParsedIntent:
+    """Fallback parser using keyword matching when Groq is unavailable."""
     low = prompt.lower()
     found = [kw for kw in ROLE_KW if kw in low]
     icp = " ".join(dict.fromkeys(found[:4])) if found else ""
-    
+
     industry = ""
     for canon, syns in INDUSTRY_KW.items():
         if any(s in low for s in syns):
@@ -58,29 +65,68 @@ def parse_user_prompt(prompt: str) -> ParsedIntent:
         match = re.search(r"\b(?:at|in|for)\s+(\w+(?:\s+\w+)?)\s+(?:companies|startups|agencies|firms)", low)
         if match:
             industry = match.group(1)
-            
+
     region = ""
     for canon, syns in REGION_KW.items():
         if any(s in low for s in syns):
             region = canon
             break
-            
+
     agency_words = {"agency", "agencies", "company", "companies", "firm", "firms", "startup", "startups"}
     people_words = {"people", "person", "profile", "profiles", "employee", "employees",
                     "leader", "leaders", "founder", "founders", "who", "someone"}
     tokens = set(low.split())
     has_agency = bool(agency_words & tokens)
     has_people = bool(people_words & tokens)
-    # Default to "both" so generic queries always return results
     search_type = "agencies" if has_agency and not has_people else ("people" if has_people and not has_agency else "both")
-    
+
     return ParsedIntent(
-        icp=icp or "technology",
+        icp=icp or prompt,
         industry=industry or "technology",
         region=region or "United States",
         search_type=search_type,
         raw_prompt=prompt,
     )
+
+def parse_user_prompt(prompt: str) -> ParsedIntent:
+    """Use Groq AI to understand any natural language ICP query. Falls back to regex."""
+    if _groq_client:
+        try:
+            response = _groq_client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an ICP (Ideal Customer Profile) query parser. "
+                            "Extract structured info from the user's description and return ONLY valid JSON with these fields:\n"
+                            "- icp: the job title, role, or person type they want to find (string)\n"
+                            "- industry: the industry/sector (string, e.g. 'fintech', 'healthcare', 'saas', 'ecommerce', 'ai')\n"
+                            "- region: location or region (string, e.g. 'New York', 'California', 'United States', 'Europe')\n"
+                            "- search_type: one of 'agencies', 'people', or 'both'\n"
+                            "- extra_keywords: array of 2-4 additional keywords from the query that refine the search\n"
+                            "Return ONLY the JSON object, no explanation."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.1,
+                max_tokens=200,
+            )
+            raw = response.choices[0].message.content.strip()
+            # Strip markdown code fences if present
+            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.MULTILINE).strip()
+            data = json.loads(raw)
+            return ParsedIntent(
+                icp=data.get("icp") or prompt,
+                industry=data.get("industry") or "technology",
+                region=data.get("region") or "United States",
+                search_type=data.get("search_type") or "both",
+                raw_prompt=prompt,
+            )
+        except Exception:
+            pass
+    return _regex_parse(prompt)
 
 def _clean_url(raw: str) -> str:
     if "bing.com/aclick" in raw or "duckduckgo.com/l/" in raw:
@@ -136,8 +182,18 @@ def search_web(query: str, max_results: int = 12) -> List[SearchResult]:
         
     keywords = re.sub(r'site:\S+|"', "", query).split()[:4]
     term = "+".join(keywords)
-    # Return dummy results on failure if needed, or empty list
-    return []
+    return [
+        SearchResult(
+            title="LinkedIn Companies: " + " ".join(keywords),
+            url="https://www.linkedin.com/search/results/companies/?keywords=" + term,
+            snippet="Browse matching companies on LinkedIn",
+        ),
+        SearchResult(
+            title="LinkedIn People: " + " ".join(keywords),
+            url="https://www.linkedin.com/search/results/people/?keywords=" + term,
+            snippet="Browse matching profiles on LinkedIn",
+        ),
+    ]
 
 def find_agencies(icp: str, industry: str, region: str, n: int = 8) -> List[SearchResult]:
     queries = [
