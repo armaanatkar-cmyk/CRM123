@@ -50,7 +50,7 @@ export default function PlaceholdersAndVanishInputDemo() {
     setResults(null);
 
     try {
-      const res = await fetch("http://localhost:8000/api/search", {
+      const res = await fetch("https://crm123-mggu.onrender.com/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: currentQuery }),
