@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+duckduckgo-search>=5.0.0
+pydantic
+pandas
