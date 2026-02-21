@@ -71,6 +71,7 @@ def parse_user_prompt(prompt: str) -> ParsedIntent:
     tokens = set(low.split())
     has_agency = bool(agency_words & tokens)
     has_people = bool(people_words & tokens)
+    # Default to "both" so generic queries always return results
     search_type = "agencies" if has_agency and not has_people else ("people" if has_people and not has_agency else "both")
     
     return ParsedIntent(
@@ -140,9 +141,10 @@ def search_web(query: str, max_results: int = 12) -> List[SearchResult]:
 
 def find_agencies(icp: str, industry: str, region: str, n: int = 8) -> List[SearchResult]:
     queries = [
-        f'site:linkedin.com/company "{icp}" {industry} agency "{region}"',
-        f'site:linkedin.com/company {icp} {industry} agency {region}',
-        f'{icp} {industry} agency {region} linkedin.com/company',
+        f'site:linkedin.com/company {industry} {region}',
+        f'{icp} {industry} companies {region}',
+        f'top {industry} companies {region} linkedin',
+        f'{industry} startups {region}',
     ]
     hits = []
     for query in queries:
@@ -151,20 +153,22 @@ def find_agencies(icp: str, industry: str, region: str, n: int = 8) -> List[Sear
         for result in search_web(query, n * 2):
             if is_linkedin_company(result.url):
                 result.company = _company_from_url(result.url)
-                hits.append(result)
+            hits.append(result)
     return dedupe_by_url(hits)[:n]
 
 def find_people(icp: str, industry: str, region: str, n: int = 8) -> List[SearchResult]:
     queries = [
-        f'site:linkedin.com/in "{icp}" {industry} "{region}"',
         f'site:linkedin.com/in {icp} {industry} {region}',
-        f'{icp} {industry} {region} linkedin.com/in',
+        f'{icp} {industry} {region} linkedin profile',
+        f'top {icp} {industry} professionals {region}',
+        f'{industry} {icp} linkedin {region}',
     ]
     hits = []
     for query in queries:
         if len(hits) >= n:
             break
-        hits.extend(result for result in search_web(query, n * 2) if is_linkedin_profile(result.url))
+        for result in search_web(query, n * 2):
+            hits.append(result)
     return dedupe_by_url(hits)[:n]
 
 def find_people_at_companies(agencies: List[SearchResult], icp: str, per_company: int = 3) -> List[SearchResult]:
@@ -174,13 +178,13 @@ def find_people_at_companies(agencies: List[SearchResult], icp: str, per_company
         query = f'site:linkedin.com/in "{company_name}" {icp}'
         try:
             results = search_web(query, per_company * 2)
+            company_count = 0
             for result in results:
-                if is_linkedin_profile(result.url):
-                    result.company = company_name
-                    people.append(result)
-                    company_count = sum(1 for person in people if person.company == company_name)
-                    if company_count >= per_company:
-                        break
+                result.company = company_name
+                people.append(result)
+                company_count += 1
+                if company_count >= per_company:
+                    break
         except Exception:
             continue
     return dedupe_by_url(people)
