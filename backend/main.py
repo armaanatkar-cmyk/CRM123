@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from .models import SearchRequest, SearchResponse
-from .services import run_search_logic
+from models import SearchRequest, SearchResponse
+from services import run_search_logic
 
 app = FastAPI()
 

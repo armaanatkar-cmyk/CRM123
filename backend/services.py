@@ -3,7 +3,7 @@ import html
 from urllib.parse import parse_qs, unquote, urlparse
 from typing import List, Iterable
 from ddgs import DDGS
-from .models import SearchResult, ParsedIntent, SearchResponse
+from models import SearchResult, ParsedIntent, SearchResponse
 
 ROLE_KW = [
     "ceo", "cto", "cfo", "coo", "cmo", "vp", "svp", "evp",
