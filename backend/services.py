@@ -2,7 +2,7 @@ import re
 import html
 from urllib.parse import parse_qs, unquote, urlparse
 from typing import List, Iterable
-from ddgs import DDGS
+from duckduckgo_search import DDGS
 from models import SearchResult, ParsedIntent, SearchResponse
 
 ROLE_KW = [
