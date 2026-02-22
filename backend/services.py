@@ -300,3 +300,116 @@ def run_search_logic(query: str) -> SearchResponse:
         company_people=company_people,
         parsed_intent=parsed
     )
+
+
+def _extract_domain(company: str, linkedin_url: str) -> str:
+    """Best-effort: get a company domain to guess email patterns."""
+    # Try to derive from linkedin company slug
+    match = re.search(r"linkedin\.com/(?:company|in)/([^/?]+)", linkedin_url or "")
+    if match and "linkedin.com/company/" in (linkedin_url or ""):
+        slug = match.group(1).replace("-", "").lower()
+        return f"{slug}.com"
+    # Fall back to stripping common words from company name
+    if company:
+        slug = re.sub(r"\b(inc|llc|ltd|corp|co|the|and|of|&)\b", "", company, flags=re.IGNORECASE)
+        slug = re.sub(r"[^a-z0-9]", "", slug.lower())
+        if slug:
+            return f"{slug}.com"
+    return ""
+
+
+def _extract_email_from_text(text: str) -> str:
+    """Pull first valid email address out of a block of text."""
+    # Avoid image/asset URLs and common false positives
+    matches = re.findall(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", text)
+    bad = {"png", "jpg", "jpeg", "gif", "svg", "webp", "css", "js"}
+    for m in matches:
+        tld = m.split(".")[-1].lower()
+        if tld not in bad and "sentry" not in m and "example" not in m:
+            return m.lower()
+    return ""
+
+
+def enrich_lead(name: str, company: str, linkedin_url: str, snippet: str, title: str) -> dict:
+    import requests as _requests
+    from models import EnrichResponse
+
+    email = ""
+    email_confidence = "none"
+    cold_email_draft = ""
+
+    # Parse first / last name
+    parts = name.strip().split()
+    first = parts[0].lower() if parts else ""
+    last = parts[-1].lower() if len(parts) > 1 else ""
+
+    domain = _extract_domain(company, linkedin_url)
+
+    # 1. Brave search for public email
+    if BRAVE_API_KEY and (name or company):
+        try:
+            q = f'"{name}" "{domain or company}" email contact'
+            resp = _requests.get(
+                "https://api.search.brave.com/res/v1/web/search",
+                headers={
+                    "Accept": "application/json",
+                    "X-Subscription-Token": BRAVE_API_KEY,
+                },
+                params={"q": q, "count": 5},
+                timeout=8,
+            )
+            if resp.ok:
+                data = resp.json()
+                for item in data.get("web", {}).get("results", []):
+                    text = item.get("description", "") + " " + item.get("url", "")
+                    found = _extract_email_from_text(text)
+                    if found:
+                        email = found
+                        email_confidence = "found"
+                        break
+        except Exception:
+            pass
+
+    # 2. Infer common patterns if nothing found and we have a domain
+    if not email and domain and first:
+        if last:
+            email = f"{first}.{last}@{domain}"
+        else:
+            email = f"{first}@{domain}"
+        email_confidence = "inferred"
+
+    # 3. Groq cold email draft
+    if _groq_client:
+        try:
+            prompt_context = (
+                f"Name: {name}\n"
+                f"Title: {title}\n"
+                f"Company: {company}\n"
+                f"LinkedIn snippet: {snippet}\n"
+            )
+            resp = _groq_client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You write short, personalized cold outreach emails. "
+                            "Write a 3-sentence cold email to the person below. "
+                            "Be specific, reference their role/company, and end with a clear ask for a 15-min call. "
+                            "No subject line. No sign-off. Just the body."
+                        ),
+                    },
+                    {"role": "user", "content": prompt_context},
+                ],
+                temperature=0.7,
+                max_tokens=150,
+            )
+            cold_email_draft = resp.choices[0].message.content.strip()
+        except Exception:
+            cold_email_draft = ""
+
+    return EnrichResponse(
+        email=email,
+        email_confidence=email_confidence,
+        cold_email_draft=cold_email_draft,
+    )

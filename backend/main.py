@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from models import SearchRequest, SearchResponse
-from services import run_search_logic
+from models import SearchRequest, SearchResponse, EnrichRequest, EnrichResponse
+from services import run_search_logic, enrich_lead
 
 app = FastAPI()
 
@@ -20,6 +20,14 @@ async def search_endpoint(request: SearchRequest):
         # For now, simplistic approach
         results = run_search_logic(request.query)
         return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/enrich", response_model=EnrichResponse)
+async def enrich_endpoint(request: EnrichRequest):
+    try:
+        result = enrich_lead(request.name, request.company, request.linkedin_url, request.snippet, request.title)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

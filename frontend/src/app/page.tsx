@@ -2,6 +2,7 @@
 
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { BackgroundPaths, PageBackground } from "@/components/ui/background-paths";
+import { DetailPanel } from "@/components/ui/detail-panel";
 import { useState } from "react";
 import { motion } from "framer-motion";
 
@@ -29,6 +30,7 @@ export default function PlaceholdersAndVanishInputDemo() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [currentQuery, setCurrentQuery] = useState("");
+  const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null);
 
   const placeholders = [
     "VP Marketing for healthcare agencies in California",
@@ -72,15 +74,27 @@ export default function PlaceholdersAndVanishInputDemo() {
   };
 
   const ResultCard = ({ result }: { result: SearchResult }) => (
-    <a
-      href={result.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="block p-4 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+    <div
+      onClick={() => setSelectedResult(result)}
+      className="relative block p-4 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
     >
-      <h3 className="font-semibold text-blue-600 dark:text-blue-400 mb-1 line-clamp-1">
-        {result.title}
-      </h3>
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="font-semibold text-blue-600 dark:text-blue-400 mb-1 line-clamp-1 flex-1">
+          {result.title}
+        </h3>
+        <a
+          href={result.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="flex-shrink-0 text-neutral-400 hover:text-blue-500 transition-colors mt-0.5"
+          title="Open LinkedIn"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+        </a>
+      </div>
       {result.company && (
         <span className="inline-block px-2 py-0.5 rounded text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 mb-2">
           {result.company}
@@ -89,7 +103,7 @@ export default function PlaceholdersAndVanishInputDemo() {
       <p className="text-sm text-neutral-600 dark:text-neutral-400 line-clamp-2">
         {result.snippet}
       </p>
-    </a>
+    </div>
   );
 
   return (
@@ -174,6 +188,7 @@ export default function PlaceholdersAndVanishInputDemo() {
         )}
       </div>
       </div>
+      <DetailPanel result={selectedResult} onClose={() => setSelectedResult(null)} />
     </div>
   );
 }

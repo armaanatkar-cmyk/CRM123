@@ -22,3 +22,15 @@ class SearchResponse(BaseModel):
     people: List[SearchResult]
     company_people: List[SearchResult]
     parsed_intent: ParsedIntent
+
+class EnrichRequest(BaseModel):
+    name: str
+    company: Optional[str] = ""
+    linkedin_url: Optional[str] = ""
+    snippet: Optional[str] = ""
+    title: Optional[str] = ""
+
+class EnrichResponse(BaseModel):
+    email: Optional[str] = ""
+    email_confidence: str = "none"  # "found" | "inferred" | "none"
+    cold_email_draft: Optional[str] = ""
