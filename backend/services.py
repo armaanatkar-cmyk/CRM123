@@ -264,7 +264,12 @@ def find_people(icp: str, industry: str, region: str, n: int = 8) -> List[Search
 def find_people_at_companies(agencies: List[SearchResult], icp: str, per_company: int = 3) -> List[SearchResult]:
     people = []
     for agency in agencies[:6]:
+        # Skip fallback LinkedIn search-page URLs — not real companies
+        if "linkedin.com/search/results/" in agency.url:
+            continue
         company_name = agency.company or parse_agency_name(agency.title)
+        if not company_name or len(company_name) < 2:
+            continue
         query = f'site:linkedin.com/in "{company_name}" {icp}'
         try:
             results = search_web(query, per_company * 2)
