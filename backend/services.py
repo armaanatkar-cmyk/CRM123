@@ -2,6 +2,7 @@ import re
 import os
 import json
 import html
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import parse_qs, unquote, urlparse
 from typing import List, Iterable
 from duckduckgo_search import DDGS
@@ -88,6 +89,7 @@ def _regex_parse(prompt: str) -> ParsedIntent:
         region=region or "United States",
         search_type=search_type,
         raw_prompt=prompt,
+        extra_keywords=[],
     )
 
 def parse_user_prompt(prompt: str) -> ParsedIntent:
@@ -125,6 +127,7 @@ def parse_user_prompt(prompt: str) -> ParsedIntent:
                 region=data.get("region") or "United States",
                 search_type=data.get("search_type") or "both",
                 raw_prompt=prompt,
+                extra_keywords=data.get("extra_keywords") or [],
             )
         except Exception:
             pass
@@ -228,11 +231,18 @@ def search_web(query: str, max_results: int = 12) -> List[SearchResult]:
         ),
     ]
 
-def find_agencies(icp: str, industry: str, region: str, n: int = 8) -> List[SearchResult]:
+def _q(term: str) -> str:
+    """Quote a term if it contains spaces, for precise Brave/DDG matching."""
+    term = term.strip()
+    if " " in term and not term.startswith('"'):
+        return f'"{term}"'
+    return term
+
+def find_agencies(icp: str, industry: str, region: str, n: int = 8, extra: List[str] = []) -> List[SearchResult]:
+    extra_str = " ".join(_q(k) for k in extra[:2]) if extra else ""
     queries = [
-        f'site:linkedin.com/company {icp} {industry} {region}',
-        f'site:linkedin.com/company {industry} {region}',
-        f'site:linkedin.com/company {icp} {region}',
+        f'site:linkedin.com/company {_q(icp)} {_q(industry)} {_q(region)} {extra_str}'.strip(),
+        f'site:linkedin.com/company {_q(icp)} {_q(region)}'.strip(),
     ]
     hits = []
     for query in queries:
@@ -244,11 +254,11 @@ def find_agencies(icp: str, industry: str, region: str, n: int = 8) -> List[Sear
             hits.append(result)
     return dedupe_by_url(hits)[:n]
 
-def find_people(icp: str, industry: str, region: str, n: int = 8) -> List[SearchResult]:
+def find_people(icp: str, industry: str, region: str, n: int = 8, extra: List[str] = []) -> List[SearchResult]:
+    extra_str = " ".join(_q(k) for k in extra[:2]) if extra else ""
     queries = [
-        f'site:linkedin.com/in {icp} {industry} {region}',
-        f'site:linkedin.com/in {icp} {industry}',
-        f'site:linkedin.com/in {icp} {region}',
+        f'site:linkedin.com/in {_q(icp)} {_q(industry)} {_q(region)} {extra_str}'.strip(),
+        f'site:linkedin.com/in {_q(icp)} {_q(region)}'.strip(),
     ]
     hits = []
     for query in queries:
@@ -258,42 +268,64 @@ def find_people(icp: str, industry: str, region: str, n: int = 8) -> List[Search
             hits.append(result)
     return dedupe_by_url(hits)[:n]
 
+def _fetch_people_for_company(agency: SearchResult, icp: str, per_company: int) -> List[SearchResult]:
+    if "linkedin.com/search/results/" in agency.url:
+        return []
+    company_name = agency.company or parse_agency_name(agency.title)
+    if not company_name or len(company_name) < 2:
+        return []
+    query = f'site:linkedin.com/in {_q(company_name)} {_q(icp)}'
+    results = []
+    try:
+        for result in search_web(query, per_company * 2):
+            result.company = company_name
+            results.append(result)
+            if len(results) >= per_company:
+                break
+    except Exception:
+        pass
+    return results
+
 def find_people_at_companies(agencies: List[SearchResult], icp: str, per_company: int = 3) -> List[SearchResult]:
     people = []
-    for agency in agencies[:6]:
-        # Skip fallback LinkedIn search-page URLs — not real companies
-        if "linkedin.com/search/results/" in agency.url:
-            continue
-        company_name = agency.company or parse_agency_name(agency.title)
-        if not company_name or len(company_name) < 2:
-            continue
-        query = f'site:linkedin.com/in "{company_name}" {icp}'
-        try:
-            results = search_web(query, per_company * 2)
-            company_count = 0
-            for result in results:
-                result.company = company_name
-                people.append(result)
-                company_count += 1
-                if company_count >= per_company:
-                    break
-        except Exception:
-            continue
+    targets = [a for a in agencies[:6] if "linkedin.com/search/results/" not in a.url]
+    with ThreadPoolExecutor(max_workers=min(len(targets), 6)) as ex:
+        futures = {ex.submit(_fetch_people_for_company, a, icp, per_company): a for a in targets}
+        for future in as_completed(futures):
+            try:
+                people.extend(future.result())
+            except Exception:
+                pass
     return dedupe_by_url(people)
 
 def run_search_logic(query: str) -> SearchResponse:
     parsed = parse_user_prompt(query)
-    agencies = []
-    people = []
-    company_people = []
-    
-    if parsed.search_type in ("both", "agencies"):
-        agencies = find_agencies(parsed.icp, parsed.industry, parsed.region, n=8)
-        if agencies:
-            company_people = find_people_at_companies(agencies, parsed.icp, per_company=3)
-    if parsed.search_type in ("both", "people"):
-        people = find_people(parsed.icp, parsed.industry, parsed.region, n=8)
-    
+    agencies: List[SearchResult] = []
+    people: List[SearchResult] = []
+    company_people: List[SearchResult] = []
+
+    do_agencies = parsed.search_type in ("both", "agencies")
+    do_people = parsed.search_type in ("both", "people")
+
+    # Run agencies + people fetches in parallel
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        futures = {}
+        if do_agencies:
+            futures["agencies"] = ex.submit(
+                find_agencies, parsed.icp, parsed.industry, parsed.region, 8, parsed.extra_keywords
+            )
+        if do_people:
+            futures["people"] = ex.submit(
+                find_people, parsed.icp, parsed.industry, parsed.region, 8, parsed.extra_keywords
+            )
+        if "agencies" in futures:
+            agencies = futures["agencies"].result()
+        if "people" in futures:
+            people = futures["people"].result()
+
+    if agencies:
+        company_people = find_people_at_companies(agencies, parsed.icp, per_company=3)
+
     return SearchResponse(
         agencies=agencies,
         people=people,

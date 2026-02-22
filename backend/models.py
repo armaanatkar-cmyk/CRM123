@@ -16,6 +16,7 @@ class ParsedIntent(BaseModel):
     region: str
     search_type: str
     raw_prompt: str
+    extra_keywords: List[str] = []
 
 class SearchResponse(BaseModel):
     agencies: List[SearchResult]
