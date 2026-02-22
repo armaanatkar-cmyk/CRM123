@@ -1,8 +1,9 @@
 "use client";
 
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
+import { BackgroundPaths } from "@/components/ui/background-paths";
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
 interface SearchResult {
   title: string;
@@ -92,11 +93,10 @@ export default function PlaceholdersAndVanishInputDemo() {
   );
 
   return (
-    <div className="min-h-screen py-20 px-4 max-w-7xl mx-auto flex flex-col items-center">
-      <h2 className="mb-10 sm:mb-20 text-xl text-center sm:text-5xl dark:text-white text-black font-semibold">
-        ICP Finder AI
-      </h2>
-      
+    <div className="min-h-screen flex flex-col items-center">
+      <BackgroundPaths title="ICP Finder AI" />
+
+      <div className="w-full max-w-7xl px-4 flex flex-col items-center -mt-10 pb-20">
       <div className="w-full max-w-xl mb-12">
         <PlaceholdersAndVanishInput
           placeholders={placeholders}
@@ -171,6 +171,7 @@ export default function PlaceholdersAndVanishInputDemo() {
             )}
           </motion.div>
         )}
+      </div>
       </div>
     </div>
   );
