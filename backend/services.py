@@ -177,11 +177,10 @@ def search_web(query: str, max_results: int = 12) -> List[SearchResult]:
                 "https://api.search.brave.com/res/v1/web/search",
                 headers={
                     "Accept": "application/json",
-                    "Accept-Encoding": "gzip",
                     "X-Subscription-Token": BRAVE_API_KEY,
                 },
                 params={"q": query, "count": min(max_results, 20)},
-                timeout=10,
+                timeout=15,
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -231,10 +230,9 @@ def search_web(query: str, max_results: int = 12) -> List[SearchResult]:
 
 def find_agencies(icp: str, industry: str, region: str, n: int = 8) -> List[SearchResult]:
     queries = [
+        f'site:linkedin.com/company {icp} {industry} {region}',
         f'site:linkedin.com/company {industry} {region}',
-        f'{icp} {industry} companies {region}',
-        f'top {industry} companies {region} linkedin',
-        f'{industry} startups {region}',
+        f'site:linkedin.com/company {icp} {region}',
     ]
     hits = []
     for query in queries:
@@ -249,9 +247,8 @@ def find_agencies(icp: str, industry: str, region: str, n: int = 8) -> List[Sear
 def find_people(icp: str, industry: str, region: str, n: int = 8) -> List[SearchResult]:
     queries = [
         f'site:linkedin.com/in {icp} {industry} {region}',
-        f'{icp} {industry} {region} linkedin profile',
-        f'top {icp} {industry} professionals {region}',
-        f'{industry} {icp} linkedin {region}',
+        f'site:linkedin.com/in {icp} {industry}',
+        f'site:linkedin.com/in {icp} {region}',
     ]
     hits = []
     for query in queries:
