@@ -1,7 +1,7 @@
 "use client";
 
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
-import { BackgroundPaths, PageBackground } from "@/components/ui/background-paths";
+import { BackgroundPaths } from "@/components/ui/background-paths";
 import { DetailPanel } from "@/components/ui/detail-panel";
 import { useState } from "react";
 import { motion } from "framer-motion";
@@ -107,8 +107,7 @@ export default function PlaceholdersAndVanishInputDemo() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center">
-      <PageBackground />
+    <div className="min-h-screen flex flex-col items-center bg-white dark:bg-neutral-950">
       <BackgroundPaths title="ICP Finder AI" />
 
       <div className="relative z-10 w-full max-w-7xl px-4 flex flex-col items-center pb-20">
