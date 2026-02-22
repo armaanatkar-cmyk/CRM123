@@ -21,6 +21,7 @@ function FloatingPaths({ position }: { position: number }) {
         className="w-full h-full text-slate-950 dark:text-white"
         viewBox="0 0 696 316"
         fill="none"
+        preserveAspectRatio="xMidYMid slice"
       >
         {paths.map((path) => (
           <motion.path
@@ -47,17 +48,25 @@ function FloatingPaths({ position }: { position: number }) {
   );
 }
 
+export function PageBackground() {
+  return (
+    <div className="fixed inset-0 pointer-events-none z-0 bg-white dark:bg-neutral-950">
+      <div className="absolute inset-0">
+        <FloatingPaths position={1} />
+      </div>
+      <div className="absolute inset-0">
+        <FloatingPaths position={-1} />
+      </div>
+    </div>
+  );
+}
+
 export function BackgroundPaths({ title = "ICP Finder AI" }: { title?: string }) {
   const words = title.split(" ");
 
   return (
-    <div className="relative w-full flex items-center justify-center overflow-hidden bg-white dark:bg-neutral-950 py-20 md:py-28">
-      <div className="absolute inset-0">
-        <FloatingPaths position={1} />
-        <FloatingPaths position={-1} />
-      </div>
-
-      <div className="relative z-10 text-center px-4">
+    <div className="relative z-10 w-full flex items-center justify-center py-20 md:py-28">
+      <div className="text-center px-4">
         <motion.h1
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
