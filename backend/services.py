@@ -11,6 +11,8 @@ from models import SearchResult, ParsedIntent, SearchResponse
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 _groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
+BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
+
 ROLE_KW = [
     "ceo", "cto", "cfo", "coo", "cmo", "vp", "svp", "evp",
     "director", "head", "manager", "lead", "founder", "co-founder",
@@ -166,6 +168,37 @@ def parse_agency_name(title: str) -> str:
     return title.strip()
 
 def search_web(query: str, max_results: int = 12) -> List[SearchResult]:
+    import requests as _requests
+
+    # 1. Brave Search API — works on cloud servers, never blocked
+    if BRAVE_API_KEY:
+        try:
+            resp = _requests.get(
+                "https://api.search.brave.com/res/v1/web/search",
+                headers={
+                    "Accept": "application/json",
+                    "Accept-Encoding": "gzip",
+                    "X-Subscription-Token": BRAVE_API_KEY,
+                },
+                params={"q": query, "count": min(max_results, 20)},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("web", {}).get("results", [])
+                output = []
+                for r in results:
+                    url = _clean_url(r.get("url", "").strip())
+                    title = r.get("title", "").strip()
+                    snippet = r.get("description", "").strip()
+                    if url:
+                        output.append(SearchResult(title=title, url=url, snippet=snippet))
+                if output:
+                    return output
+        except Exception:
+            pass
+
+    # 2. DuckDuckGo fallback
     try:
         results = DDGS().text(query, region="wt-wt", max_results=max_results)
         output = []
@@ -179,7 +212,8 @@ def search_web(query: str, max_results: int = 12) -> List[SearchResult]:
             return output
     except Exception:
         pass
-        
+
+    # 3. Last resort: LinkedIn search links
     keywords = re.sub(r'site:\S+|"', "", query).split()[:4]
     term = "+".join(keywords)
     return [
